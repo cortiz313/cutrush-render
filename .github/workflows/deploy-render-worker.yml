@@ -1,7 +1,7 @@
-﻿name: Deploy render-worker
+name: Deploy render-worker
 on:
   push:
-    paths: ["render-worker/**",".github/workflows/deploy-render-worker.yml"]
+    paths: ["render-render-worker/**",".github/workflows/deploy-render-worker.yml"]
     branches: [main]
 jobs:
   deploy:

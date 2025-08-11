@@ -1,4 +1,4 @@
-﻿name: Deploy queue-api
+name: Deploy queue-api
 on:
   push:
     paths: ["queue-api/**",".github/workflows/deploy-queue-api.yml"]
