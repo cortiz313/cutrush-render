@@ -1,0 +1,12 @@
+﻿{
+  "name": "render-worker",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/index.js" },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.637.0",
+    "axios": "^1.7.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

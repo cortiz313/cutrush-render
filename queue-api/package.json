@@ -1,0 +1,13 @@
+﻿{
+  "name": "queue-api",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/index.js" },
+  "dependencies": {
+    "@google-cloud/pubsub": "^7.7.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "joi": "^17.13.3"
+  }
+}
