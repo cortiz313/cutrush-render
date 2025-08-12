@@ -18,7 +18,11 @@ app.post("/pubsub", async (req, res) => {
   try {
     const b64 = req.body?.message?.data;
     if (!b64) throw new Error("No Pub/Sub data");
-    const job = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+
+    // ✅ Proper base64 decode and JSON parse
+    const rawJson = Buffer.from(b64, "base64").toString("utf8");
+    const job = JSON.parse(rawJson);
+
     await processJob(job);
   } catch (e) {
     console.error("Job error:", e);
@@ -37,46 +41,61 @@ async function processJob(job) {
     inputs.push({ type: "b", id: br.id, path: p });
   }
 
-  const { inputArgs, filterComplex, mapArgs } = buildFfmpegArgs({ inputs, placements: job.placements });
+  const { inputArgs, filterComplex, mapArgs } = buildFfmpegArgs({
+    inputs,
+    placements: job.placements,
+  });
 
   const outPath = path.join(tmpDir, "out.mp4");
   const args = [
     ...inputArgs,
     "-filter_complex", filterComplex,
     ...mapArgs,
-    "-c:v","libx264",
+    "-c:v", "libx264",
     "-preset", process.env.FFMPEG_PRESET || "veryfast",
     "-crf", process.env.FFMPEG_CRF || "18",
-    "-movflags","+faststart",
-    "-c:a","aac","-b:a","192k",
-    "-y", outPath
+    "-movflags", "+faststart",
+    "-c:a", "aac", "-b:a", "192k",
+    "-y", outPath,
   ];
 
   console.log("FFmpeg:", args.join(" "));
   const { stdout, stderr } = await execFileAsync("/usr/bin/ffmpeg", args, {
     timeout: (+process.env.MAX_RENDER_SECONDS || 3600) * 1000,
-    maxBuffer: 10 * 1024 * 1024
+    maxBuffer: 10 * 1024 * 1024,
   });
   if (stdout) console.log(stdout);
   if (stderr) console.log(stderr);
 
-  await uploadFromFile({ bucket: job.output.bucket, key: job.output.key }, outPath, "video/mp4");
+  await uploadFromFile(
+    { bucket: job.output.bucket, key: job.output.key },
+    outPath,
+    "video/mp4"
+  );
 
-  try {
-    await axios.post(job.webhook.url, {
-      projectId: job.projectId,
-      userId: job.userId,
-      outputUrl: `${process.env.PUBLIC_R2_BASE}/${job.output.key}`,
-      status: "completed"
-    }, {
-      headers: { "Content-Type": "application/json", "X-Callback-Signature": process.env.CALLBACK_SECRET || "" },
-      timeout: 10000
-    });
-  } catch (e) {
-    console.error("Callback failed:", e?.response?.status, e?.response?.data || e.message);
+  // 🔁 Optional callback to webhook
+  if (job.webhook?.url) {
+    try {
+      await axios.post(job.webhook.url, {
+        projectId: job.projectId,
+        userId: job.userId,
+        outputUrl: `${process.env.PUBLIC_R2_BASE}/${job.output.key}`,
+        status: "completed",
+      }, {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Callback-Signature": process.env.CALLBACK_SECRET || "",
+        },
+        timeout: 10000,
+      });
+    } catch (e) {
+      console.error("Callback failed:", e?.response?.status, e?.response?.data || e.message);
+    }
   }
 
-  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch {}
 }
 
 const port = process.env.PORT || 8080;

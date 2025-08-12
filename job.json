@@ -1,0 +1,1 @@
+﻿{"aRoll":{"bucket":"cutrushai-assets","key":"tests/aroll.mp4"},"jobId":"smoke-001","output":{"bucket":"cutrushai-assets","key":"renders/smoke-001.mp4"},"placements":[{"end":3,"brollId":"b1","start":1}],"projectId":"00000000-0000-0000-0000-000000000000","bRoll":[{"key":"tests/b1.mp4","bucket":"cutrushai-assets","id":"b1"}]}
