@@ -15,15 +15,31 @@ app.use(express.json({ type: "*/*" }));
 
 app.post("/pubsub", async (req, res) => {
   res.status(204).end();
+
   try {
     const b64 = req.body?.message?.data;
     if (!b64) throw new Error("No Pub/Sub data");
 
-    const rawJson = Buffer.from(b64, "base64").toString("utf8");
+    const decoded = Buffer.from(b64, "base64").toString("utf8");
+    console.log("▶ Decoded JSON string:", decoded); // TEMP DEBUG LOG
 
-    console.log("▶ Decoded JSON string:", rawJson); // TEMP DEBUG LOG
+    let job;
+    try {
+      // Try parsing directly (Format 1)
+      job = JSON.parse(decoded);
+    } catch (err1) {
+      try {
+        // Try parsing as a nested { data: "..." } (Format 2)
+        const nested = JSON.parse(decoded);
+        if (!nested?.data) throw new Error("Missing 'data' field");
+        const innerDecoded = Buffer.from(nested.data, "base64").toString("utf8");
+        console.log("▶ Nested decoded JSON string:", innerDecoded); // TEMP DEBUG LOG
+        job = JSON.parse(innerDecoded);
+      } catch (err2) {
+        throw new Error("Failed to parse job from both formats");
+      }
+    }
 
-    const job = JSON.parse(rawJson);
     await processJob(job);
   } catch (e) {
     console.error("❌ Job error:", e.message);
@@ -42,7 +58,10 @@ async function processJob(job) {
     inputs.push({ type: "b", id: br.id, path: p });
   }
 
-  const { inputArgs, filterComplex, mapArgs } = buildFfmpegArgs({ inputs, placements: job.placements });
+  const { inputArgs, filterComplex, mapArgs } = buildFfmpegArgs({
+    inputs,
+    placements: job.placements,
+  });
 
   const outPath = path.join(tmpDir, "out.mp4");
   const args = [
@@ -57,6 +76,7 @@ async function processJob(job) {
     "-y", outPath,
   ];
 
+  console.log("FFmpeg:", args.join(" "));
   const { stdout, stderr } = await execFileAsync("/usr/bin/ffmpeg", args, {
     timeout: (+process.env.MAX_RENDER_SECONDS || 3600) * 1000,
     maxBuffer: 10 * 1024 * 1024,
@@ -64,7 +84,11 @@ async function processJob(job) {
   if (stdout) console.log(stdout);
   if (stderr) console.log(stderr);
 
-  await uploadFromFile({ bucket: job.output.bucket, key: job.output.key }, outPath, "video/mp4");
+  await uploadFromFile(
+    { bucket: job.output.bucket, key: job.output.key },
+    outPath,
+    "video/mp4"
+  );
 
   if (job.webhook?.url) {
     try {
