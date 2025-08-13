@@ -59,13 +59,15 @@ async function processJob(job) {
 
   const inputs = [{ type: "a", path: aPath }];
 
-  // Download B-rolls
-  for (const br of job.bRoll) {
+  // Parallel download B-rolls
+  const bDownloads = job.bRoll.map(async (br) => {
     const p = path.join(tmpDir, `${br.id}.mp4`);
     console.log(`⬇️ Downloading B-roll '${br.id}' → ${br.bucket}/${br.key}`);
     await downloadToFile({ bucket: br.bucket, key: br.key }, p);
     inputs.push({ type: "b", id: br.id, path: p });
-  }
+  });
+
+  await Promise.all(bDownloads);
 
   // Prepare FFmpeg args
   console.log("⚙️ Building FFmpeg args...");
