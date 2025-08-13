@@ -11,19 +11,16 @@ const s3 = new S3Client({
   },
 });
 
-// Efficient download with logging and proper stream handling
 export async function downloadToFile({ bucket, key }, outPath) {
-  console.log(`⬇️ Downloading ${bucket}/${key} → ${outPath}`);
-  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  const url = `${process.env.PUBLIC_R2_BASE}/${key}`;
+  console.log(`⬇️ Streaming download from ${url} → ${outPath}`);
 
   try {
-    const response = await s3.send(command);
-    const bodyStream = response.Body;
-
-    await pipeline(bodyStream, fs.createWriteStream(outPath));
+    const response = await axios.get(url, { responseType: "stream" });
+    await pipeline(response.data, fs.createWriteStream(outPath));
     console.log(`✅ Download complete: ${outPath}`);
   } catch (err) {
-    console.error(`❌ Failed to download ${key}:`, err);
+    console.error(`❌ Failed to download from ${url}:`, err.message);
     throw err;
   }
 }
