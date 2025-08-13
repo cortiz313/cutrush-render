@@ -47,25 +47,28 @@ app.post("/pubsub", async (req, res) => {
 });
 
 async function processJob(job) {
-  console.log("▶ Starting job:", job.jobId || "unknown");
+  console.log("🎬 Starting job:", job.jobId || "unknown");
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "render-"));
   console.log("📁 Temp directory:", tmpDir);
 
+  // Download A-roll
   const aPath = path.join(tmpDir, "a.mp4");
-  console.log("⬇️ Downloading A-roll:", job.aRoll.key);
+  console.log(`⬇️ Downloading A-roll → ${job.aRoll.bucket}/${job.aRoll.key}`);
   await downloadToFile({ bucket: job.aRoll.bucket, key: job.aRoll.key }, aPath);
 
   const inputs = [{ type: "a", path: aPath }];
 
+  // Download B-rolls
   for (const br of job.bRoll) {
     const p = path.join(tmpDir, `${br.id}.mp4`);
-    console.log("⬇️ Downloading B-roll:", br.key);
+    console.log(`⬇️ Downloading B-roll '${br.id}' → ${br.bucket}/${br.key}`);
     await downloadToFile({ bucket: br.bucket, key: br.key }, p);
     inputs.push({ type: "b", id: br.id, path: p });
   }
 
-  console.log("⚙️ Building ffmpeg args...");
+  // Prepare FFmpeg args
+  console.log("⚙️ Building FFmpeg args...");
   const { inputArgs, filterComplex, mapArgs } = buildFfmpegArgs({
     inputs,
     placements: job.placements,
@@ -84,25 +87,27 @@ async function processJob(job) {
     "-y", outPath,
   ];
 
-  console.log("🎬 Running ffmpeg...");
-  console.log("FFmpeg:", args.join(" "));
+  // Run FFmpeg
+  console.log("🚀 Starting FFmpeg render...");
+  console.log("FFmpeg args:", args.join(" "));
   const { stdout, stderr } = await execFileAsync("/usr/bin/ffmpeg", args, {
     timeout: (+process.env.MAX_RENDER_SECONDS || 3600) * 1000,
     maxBuffer: 10 * 1024 * 1024,
   });
-
   if (stdout) console.log(stdout);
   if (stderr) console.log(stderr);
 
-  console.log("⬆️ Uploading result to R2:", job.output.key);
+  // Upload result
+  console.log(`⬆️ Uploading result → ${job.output.bucket}/${job.output.key}`);
   await uploadFromFile(
     { bucket: job.output.bucket, key: job.output.key },
     outPath,
     "video/mp4"
   );
 
+  // Webhook
   if (job.webhook?.url) {
-    console.log("📡 Sending callback to:", job.webhook.url);
+    console.log("📡 Posting webhook →", job.webhook.url);
     try {
       await axios.post(job.webhook.url, {
         projectId: job.projectId,
@@ -116,13 +121,15 @@ async function processJob(job) {
         },
         timeout: 10000,
       });
+      console.log("✅ Webhook posted successfully");
     } catch (e) {
       console.error("❌ Callback failed:", e?.response?.status, e?.response?.data || e.message);
     }
   }
 
+  // Cleanup
   try {
-    console.log("🧹 Cleaning up temp dir...");
+    console.log("🧹 Cleaning up temp directory...");
     fs.rmSync(tmpDir, { recursive: true, force: true });
   } catch (err) {
     console.warn("⚠️ Cleanup failed:", err.message);

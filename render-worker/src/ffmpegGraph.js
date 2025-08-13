@@ -2,39 +2,54 @@
   const aIndex = 0;
   const bIndexById = {};
   let idx = 1;
-  for (const i of inputs) if (i.type === "b") bIndexById[i.id] = idx++;
+
+  // Map B-roll IDs to FFmpeg input indices
+  for (const i of inputs) {
+    if (i.type === "b") {
+      bIndexById[i.id] = idx++;
+    }
+  }
 
   const chains = [];
   let baseLabel = "base0";
-  chains.push(`[${aIndex}:v]setpts=PTS-STARTPTS,format=yuv420p[${baseLabel}]`);
   let currentLabel = baseLabel;
   let overlayCount = 0;
 
+  // Base layer from A-roll
+  chains.push(`[${aIndex}:v]setpts=PTS-STARTPTS,format=yuv420p[${baseLabel}]`);
+
   for (const p of placements) {
     const bIdx = bIndexById[p.brollId];
-    if (bIdx == null) continue;
+    if (bIdx == null) {
+      console.warn(`⚠️ Skipping placement with unknown brollId: ${p.brollId}`);
+      continue;
+    }
 
     const enable = `between(t\\,${p.start}\\,${p.end})`;
-    const thisIn = `b${overlayCount}`;
+    const bInLabel = `b${overlayCount}`;
+    const outLabel = `ov${overlayCount}`;
     const scale = (p.w && p.h) ? `,scale=${p.w}:${p.h}` : "";
-    chains.push(`[${bIdx}:v]setpts=PTS-STARTPTS${scale}[${thisIn}]`);
 
-    const x = p.x ?? 0, y = p.y ?? 0;
-    const out = `ov${overlayCount}`;
-    if (p.mode === "cutaway") {
-      chains.push(`[${currentLabel}][${thisIn}]overlay=enable='${enable}':x=0:y=0[${out}]`);
-    } else {
-      chains.push(`[${currentLabel}][${thisIn}]overlay=enable='${enable}':x=${x}:y=${y}[${out}]`);
-    }
-    currentLabel = out;
+    // Prepare B-roll video
+    chains.push(`[${bIdx}:v]setpts=PTS-STARTPTS${scale}[${bInLabel}]`);
+
+    // Determine overlay mode
+    const x = p.x ?? 0;
+    const y = p.y ?? 0;
+    const overlay = p.mode === "cutaway"
+      ? `overlay=enable='${enable}':x=0:y=0`
+      : `overlay=enable='${enable}':x=${x}:y=${y}`;
+
+    chains.push(`[${currentLabel}][${bInLabel}]${overlay}[${outLabel}]`);
+    currentLabel = outLabel;
     overlayCount++;
   }
 
   const filterComplex = chains.join(";");
 
   return {
-    inputArgs: inputs.map(i => ["-i", i.path]).flat(),
+    inputArgs: inputs.flatMap(i => ["-i", i.path]),
     filterComplex,
-    mapArgs: ["-map", `[${currentLabel}]`, "-map", `${aIndex}:a?`]
+    mapArgs: ["-map", `[${currentLabel}]`, "-map", `${aIndex}:a?`],
   };
 }
